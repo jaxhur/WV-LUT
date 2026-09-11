@@ -26,7 +26,8 @@ def build_train_parser(description: str) -> argparse.ArgumentParser:
     add_shared_model_arguments(parser)
     add_dataset_arguments(parser)
     parser.add_argument("--expDir", required=True, help="实验目录，例如 experiments/wvlut_lolv1。")
-    parser.add_argument("--batchSize", type=int, default=8)
+    # WV-LUT 在训练时会展开较多局部中间特征，单卡默认使用保守 micro-batch。
+    parser.add_argument("--batchSize", type=int, default=4)
     parser.add_argument("--patchSize", type=int, default=96)
     parser.add_argument("--totalIter", type=int, default=150000)
     parser.add_argument("--initialIter", type=int, default=0, help="当前阶段开始前已完成的 global iteration。")
@@ -47,7 +48,7 @@ def build_train_parser(description: str) -> argparse.ArgumentParser:
 def build_finetune_parser() -> argparse.ArgumentParser:
     """构造 LUT 微调参数解析器。"""
     parser = build_train_parser("使用导出的 LUT 进行单卡微调")
-    parser.set_defaults(batchSize=2, patchSize=256, initialIter=150000, totalIter=160000, lr0=1e-4, lr1=1e-6)
+    parser.set_defaults(batchSize=1, patchSize=256, initialIter=150000, totalIter=160000, lr0=1e-4, lr1=1e-6)
     parser.add_argument("--lutDir", required=True, help="基础网络导出的 luts 目录。")
     parser.add_argument("--initCheckpoint", required=True, help="基础网络的 *_G.pth，用于初始化 GAM 与缩放参数。")
     return parser
