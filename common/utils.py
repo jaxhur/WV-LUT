@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from scipy import signal
-from torchvision.models import vgg16
+from torchvision.models import VGG16_Weights, vgg16
 
 # ============== Loss Functions ==============
 
@@ -41,15 +41,14 @@ class LossNetwork(torch.nn.Module):
 
 
 def net_loss(pred, target):
-    """Calculate perceptual loss using VGG features."""
-    # Initialize VGG model if not already done
+    """使用冻结 VGG 特征计算感知损失。"""
+    # 延迟创建特征网络，避免仅运行评估时初始化 VGG。
     if not hasattr(net_loss, 'vgg_model'):
-        vgg_model = vgg16(pretrained=True)
-        vgg_model = vgg_model.features[:16].eval()  # Use only first 16 layers
-        # Move model to the same device as input
+        vgg_model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+        vgg_model = vgg_model.features[:16].eval()
+        # VGG 参数冻结，但预测分支必须保留梯度以让感知损失参与优化。
         device = pred.device
         vgg_model = vgg_model.to(device)
-        # Freeze VGG parameters
         for param in vgg_model.parameters():
             param.requires_grad = False
         net_loss.vgg_model = vgg_model
@@ -61,12 +60,11 @@ def net_loss(pred, target):
     pred_norm = (pred - mean) / std
     target_norm = (target - mean) / std
 
-    # Extract features
+    # GT 特征不需要梯度；预测特征不能放在 no_grad 中。
+    pred_features = net_loss.vgg_model(pred_norm)
     with torch.no_grad():
-        pred_features = net_loss.vgg_model(pred_norm)
         target_features = net_loss.vgg_model(target_norm)
 
-    # Calculate MSE loss between features
     return F.mse_loss(pred_features, target_features)
 
 

@@ -1,5 +1,7 @@
 # Python
 __pycache__/
+data/LOL-v1
+data/LOL-v2
 *.py[cod]
 *$py.class
 *.so

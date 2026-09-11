@@ -1,11 +1,16 @@
 import os
 import sys
+from pathlib import Path
 import numpy as np
 import torch
 
-sys.path.insert(0, "../")  # run under the current directory
-from common.option import TestOptions
+# 根据脚本自身位置定位项目根目录，避免依赖启动时的当前工作目录。
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 from common.architecture import *
+from common.repro_options import build_transfer_parser
+from common.reproduction import load_generator_weights, require_generator_checkpoint
 
 
 def get_input_tensor(opt, dim=4):
@@ -19,17 +24,17 @@ def get_input_tensor(opt, dim=4):
         torch.Tensor: Input tensor for LUT generation
     """
     # Generate base values
-    base = torch.arange(0, 257, 2 ** opt.interval)  # 0-256
+    base = torch.arange(0, 257, 2 ** opt.interval, device=torch.device(opt.device))  # 0-256
     base[-1] -= 1
     L = base.size(0)
 
     if dim == 4:
         # Generate 4D input tensor directly
         # Create a 256*256*256*256 grid
-        first = base.cuda().unsqueeze(1).repeat(1, L * L * L).reshape(-1)
-        second = base.cuda().repeat(L * L * L)
-        third = base.cuda().unsqueeze(1).repeat(1, L * L).reshape(-1).repeat(L)
-        fourth = base.cuda().unsqueeze(1).repeat(1, L).reshape(-1).repeat(L * L)
+        first = base.unsqueeze(1).repeat(1, L * L * L).reshape(-1)
+        second = base.repeat(L * L * L)
+        third = base.unsqueeze(1).repeat(1, L * L).reshape(-1).repeat(L)
+        fourth = base.unsqueeze(1).repeat(1, L).reshape(-1).repeat(L * L)
         input_tensor = torch.stack([first, second, third, fourth], 1)  # [256*256*256*256, 4]
         
         # Reshape to [N, C=1, H=2, W=2]
@@ -37,9 +42,9 @@ def get_input_tensor(opt, dim=4):
 
     else:  # dim == 3
         # Generate 3D input tensor: 256*256*256 grid
-        first = base.cuda().unsqueeze(1).repeat(1, L * L).reshape(-1)
-        second = base.cuda().repeat(L * L)
-        third = base.cuda().unsqueeze(1).repeat(1, L).reshape(-1).repeat(L)
+        first = base.unsqueeze(1).repeat(1, L * L).reshape(-1)
+        second = base.repeat(L * L)
+        third = base.unsqueeze(1).repeat(1, L).reshape(-1).repeat(L)
         input_tensor = torch.stack([first, second, third], 1)  # [256*256*256, 3]
 
         # Reshape to [N, C=3, H=1, W=1]
@@ -202,14 +207,18 @@ def process_model(model_G, opt, model_type="shared"):
 
 
 def main():
-    """Main function to process WVLUT models."""
-    opt = TestOptions().parse()
+    """从显式传入的基础网络权重导出 LUT。"""
+    opt = build_transfer_parser().parse_args()
+    opt.model_type = opt.modelType
     os.makedirs(os.path.join(opt.expDir, "luts"), exist_ok=True)
 
-    model_wo_shared = WVLUT(nf=opt.nf, model_type=opt.model_type).cuda()
-    lm_wo_shared = torch.load(os.path.join(opt.expDir, f'Model_{opt.loadIter:06d}.pth'))
-    model_wo_shared.load_state_dict(lm_wo_shared.state_dict(), strict=True)
-    process_model(model_wo_shared, opt, model_type=opt.model_type)
+    device = torch.device(opt.device)
+    if device.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("请求 CUDA 导出 LUT，但当前服务器未检测到可用 CUDA 设备。")
+    model = WVLUT(nf=opt.nf, model_type=opt.model_type).to(device)
+    checkpoint = require_generator_checkpoint(Path(opt.checkpoint))
+    load_generator_weights(model, checkpoint, device)
+    process_model(model, opt, model_type=opt.model_type)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
+# PyTorch 与 torchvision 请按 README 单独从 CUDA 12.8 官方索引安装。
 lpips==0.1.4
-numpy==1.23.3
-opencv_python==4.1.2.30
-opencv_python_headless==4.7.0.72
-Pillow==9.4.0
-Pillow==11.2.1
-scipy==1.9.1
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+Pillow==10.4.0
+scipy==1.13.1
+scikit-image==0.24.0
+tensorboard==2.18.0
+thop==0.1.1.post2209072238
 timm==0.6.13
-torch==1.11.0
-torchvision==0.12.0
