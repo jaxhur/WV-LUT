@@ -6,8 +6,8 @@ DATASET="${1:?请传入 LOL-v1、LOL-v2-syn 或 LOL-v2-real}"
 BASE_EXP_DIR="${2:?请传入基础网络实验目录}"
 EXP_DIR="${3:?请传入 LUT 微调实验目录}"
 DATA_ROOT="${DATA_ROOT:-./data}"
-# LUT 微调默认仅使用一张训练 patch；可通过 FINETUNE_BATCH_SIZE 覆盖。
-FINETUNE_BATCH_SIZE="${FINETUNE_BATCH_SIZE:-1}"
+# LUT 微调保留原项目的 batch=2；显存不足时可通过 FINETUNE_BATCH_SIZE 覆盖。
+FINETUNE_BATCH_SIZE="${FINETUNE_BATCH_SIZE:-2}"
 FINETUNE_PATCH_SIZE="${FINETUNE_PATCH_SIZE:-256}"
 
 python script/finetuneLUT.py \
@@ -15,7 +15,7 @@ python script/finetuneLUT.py \
   --dataRoot "${DATA_ROOT}" \
   --expDir "${EXP_DIR}" \
   --lutDir "${BASE_EXP_DIR}/luts" \
-  --initCheckpoint "${BASE_EXP_DIR}/models/best_G.pth" \
+  --initCheckpoint "${BASE_EXP_DIR}/models/150000_G.pth" \
   --batchSize "${FINETUNE_BATCH_SIZE}" \
   --patchSize "${FINETUNE_PATCH_SIZE}" \
   --initialIter 150000 \

@@ -6,8 +6,11 @@
 
 - 三个数据集分别训练、分别在自身完整测试集验证和测试，不做混合训练。
 - 论文原文使用两张 Tesla V100、总 `BatchSize=16`，基础训练为 `96×96` patch、`150000` iter；其显存版本未公开。为降低单卡显存占用，本仓库默认基础训练使用 `BatchSize=4`、`PatchSize=96`、`totalIter=150000`、`lr=1e-3 -> 1e-5`。这是单卡显存兼容配置，不能称为严格复刻论文的 batch 设置。
-- LUT 微调保持原项目的 `PatchSize=256` 与 global iteration `150000 -> 160000`，即额外训练 `10000` iter、学习率 `1e-4 -> 1e-6`；单卡默认 `BatchSize=1`。论文原文的 LUT 微调是整图、batch 1，本仓库仍使用原项目已有的随机 patch 微调流程。
+- LUT 微调保持原项目脚本的 `BatchSize=2`、`PatchSize=256` 与 global iteration `150000 -> 160000`，即额外训练 `10000` iter；该阶段在自身 `10000` iter 内把学习率从 `1e-4` 余弦退火到 `1e-6`。论文原文的 LUT 微调是整图、batch 1，本仓库仍使用原项目已有的随机 patch 微调流程。
 - 训练固定每 `20` 个 global iteration 输出一次 `TRAIN` 状态行；每 `1000` iter 在对应完整测试集验证一次，最后一个 iteration 必定再验证一次。
+- 训练样本按原项目语义进行有放回均匀随机抽样；每个日志用虚拟 epoch 均补齐为满 batch，不会出现 BatchNorm 接收尾部 batch 1 的情况。
+- 原项目虽然把总 loss 写成 `SmoothL1 + 0.04 * VGG`，但预测与 GT 的 VGG 前向都位于 `torch.no_grad()` 中，因此优化梯度实际只来自 Smooth L1。本仓库保留这一真实训练语义；日志将后一项明确记为 `vgg_no_grad`，总 loss 仍按原公式报告。
+- LUT 导出及 LUT 微调初始化默认使用基础阶段的 `models/150000_G.pth`，对应原项目明确指定的第 `150000` iter 权重；周期验证得到的 `best_G.pth` 仍用于最终测试，不会反向改变三阶段训练流程。
 - 验证集 PSNR 严格提高时更新 `best_G.pth`。验证使用 `model.eval()` 和 `torch.no_grad()`，输入完整原图，不 resize、不 GT-Mean、不 self-ensemble。
 - PSNR 是 RGB `[0,255]` 全通道联合 MSE、`crop_border=0`；SSIM 是 `11x11`、`sigma=1.5` 的 RGB 三通道平均、`crop_border=0`；LPIPS 为 RGB `[-1,1]` 的 AlexNet v0.1。
 - 复杂度固定使用 THOP、`model.eval()` 和 `1x3x256x256` 输入，报告 `Params(M)`、`GMACs(G)` 和 `GFLOPs(G)=2*MACs/1e9`。
@@ -90,6 +93,15 @@ BATCH_SIZE=2 bash script/train.sh LOL-v1 experiments/wvlut_lolv1
 ```
 
 `BATCH_SIZE` 仅改变每次 optimizer update 的样本数；`totalIter`、loss、验证频率和统一评价口径均不变。请在实验记录中注明实际 batch，避免与论文的两卡总 batch 16 混淆。
+
+如果旧实验的验证结果连续等于 `PSNR=6.3798、RGB SSIM=0.0185`，它对应 LOL-v1 `eval15` 的全黑输出基线。该 checkpoint 已经塌缩，不能在修复后继续自动续训；请先保留旧目录并换一个新实验目录重新训练，例如：
+
+```bash
+mv experiments/wvlut_lolv1 experiments/wvlut_lolv1_black_20260911
+bash script/train.sh LOL-v1 experiments/wvlut_lolv1
+```
+
+修复后的 training state 带有训练语义版本。程序检测到修复前的 `.state` 时会直接报错，避免把已经塌缩的权重静默恢复进新训练。
 
 每个实验目录统一为：
 

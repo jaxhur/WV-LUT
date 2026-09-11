@@ -1,5 +1,6 @@
 """LOL-v1、LOL-v2-syn 与 LOL-v2-real 的统一成对数据读取。"""
 
+import math
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,7 +9,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, RandomSampler
 
 
 IMAGE_SUFFIXES = {".bmp", ".jpeg", ".jpg", ".png", ".tif", ".tiff"}
@@ -179,14 +180,26 @@ def create_train_loader(
     worker_num: int,
     seed: int,
 ) -> DataLoader:
-    """创建单卡训练 DataLoader，并保留最后一个非满 batch。"""
+    """创建与原仓库等价的有放回随机采样 DataLoader，并保持满 batch。"""
+    if batch_size <= 0:
+        raise ValueError(f"batch_size 必须为正整数，当前为 {batch_size}。")
+
     generator = torch.Generator()
     generator.manual_seed(seed)
+    # 原仓库的 Dataset 忽略 index 并对文件 random.choice，等价于有放回均匀抽样。
+    # 将每个虚拟 epoch 补齐到 batch 的整数倍，避免 BatchNorm 周期性接收尾部小 batch。
+    samples_per_epoch = math.ceil(len(dataset) / batch_size) * batch_size
+    sampler = RandomSampler(
+        dataset,
+        replacement=True,
+        num_samples=samples_per_epoch,
+        generator=generator,
+    )
     return DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=True,
-        drop_last=False,
+        sampler=sampler,
+        drop_last=True,
         num_workers=worker_num,
         pin_memory=True,
         worker_init_fn=_seed_worker,

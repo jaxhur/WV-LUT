@@ -48,7 +48,7 @@ def build_train_parser(description: str) -> argparse.ArgumentParser:
 def build_finetune_parser() -> argparse.ArgumentParser:
     """构造 LUT 微调参数解析器。"""
     parser = build_train_parser("使用导出的 LUT 进行单卡微调")
-    parser.set_defaults(batchSize=1, patchSize=256, initialIter=150000, totalIter=160000, lr0=1e-4, lr1=1e-6)
+    parser.set_defaults(batchSize=2, patchSize=256, initialIter=150000, totalIter=160000, lr0=1e-4, lr1=1e-6)
     parser.add_argument("--lutDir", required=True, help="基础网络导出的 luts 目录。")
     parser.add_argument("--initCheckpoint", required=True, help="基础网络的 *_G.pth，用于初始化 GAM 与缩放参数。")
     return parser

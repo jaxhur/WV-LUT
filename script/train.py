@@ -187,7 +187,8 @@ def main(stage: str = "pretrain") -> None:
         eps=1e-8,
         weight_decay=args.weightDecay,
     )
-    scheduler = build_scheduler(optimizer, args.totalIter, args.lr0, args.lr1)
+    # 每个训练阶段都在自身有效迭代范围内完成声明的余弦退火。
+    scheduler = build_scheduler(optimizer, phase_total_iter, args.lr0, args.lr1)
     default_state = {
         "epoch": 1,
         "iteration": args.initialIter,
@@ -208,7 +209,7 @@ def main(stage: str = "pretrain") -> None:
     writer = SummaryWriter(log_dir=str(directories["tensorboard"]))
     iterator = iter(train_loader)
     phase_iter = global_iter - args.initialIter
-    running_losses = {"smooth_l1": 0.0, "perceptual": 0.0, "total": 0.0}
+    running_losses = {"smooth_l1": 0.0, "vgg_no_grad": 0.0, "total": 0.0}
     interval_start = time.perf_counter()
     train_start = time.perf_counter()
     last_validation_iter = global_iter
@@ -227,17 +228,18 @@ def main(stage: str = "pretrain") -> None:
             optimizer.zero_grad(set_to_none=True)
             prediction = model(lq)
             smooth_l1 = F.smooth_l1_loss(prediction, gt)
-            perceptual = args.perceptualWeight * net_loss(prediction, gt)
-            total_loss = smooth_l1 + perceptual
+            # 原仓库的 VGG 项位于 no_grad 中：保留报告总 loss 的公式，但只由 Smooth L1 提供梯度。
+            vgg_no_grad = args.perceptualWeight * net_loss(prediction, gt)
+            total_loss = smooth_l1 + vgg_no_grad
             total_loss.backward()
             optimizer.step()
             scheduler.step()
 
             running_losses["smooth_l1"] += float(smooth_l1.detach())
-            running_losses["perceptual"] += float(perceptual.detach())
+            running_losses["vgg_no_grad"] += float(vgg_no_grad)
             running_losses["total"] += float(total_loss.detach())
             writer.add_scalar("train/smooth_l1", float(smooth_l1.detach()), global_iter)
-            writer.add_scalar("train/perceptual", float(perceptual.detach()), global_iter)
+            writer.add_scalar("train/vgg_no_grad", float(vgg_no_grad), global_iter)
             writer.add_scalar("train/total", float(total_loss.detach()), global_iter)
 
             if global_iter % args.printFreq == 0:
@@ -258,10 +260,10 @@ def main(stage: str = "pretrain") -> None:
                         eta_seconds,
                         scheduler.get_last_lr()[0],
                         averages["total"],
-                        {"smooth_l1": averages["smooth_l1"], "perceptual": averages["perceptual"]},
+                        {"smooth_l1": averages["smooth_l1"], "vgg_no_grad": averages["vgg_no_grad"]},
                     )
                 )
-                running_losses = {"smooth_l1": 0.0, "perceptual": 0.0, "total": 0.0}
+                running_losses = {"smooth_l1": 0.0, "vgg_no_grad": 0.0, "total": 0.0}
                 interval_start = time.perf_counter()
 
             should_validate = global_iter % args.valFreq == 0 or global_iter == args.totalIter

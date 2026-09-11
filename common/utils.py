@@ -41,12 +41,12 @@ class LossNetwork(torch.nn.Module):
 
 
 def net_loss(pred, target):
-    """使用冻结 VGG 特征计算感知损失。"""
+    """按原仓库语义计算不参与反向传播的 VGG 监控项。"""
     # 延迟创建特征网络，避免仅运行评估时初始化 VGG。
     if not hasattr(net_loss, 'vgg_model'):
         vgg_model = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
         vgg_model = vgg_model.features[:16].eval()
-        # VGG 参数冻结，但预测分支必须保留梯度以让感知损失参与优化。
+        # VGG 仅用于复现原仓库记录的 loss 数值，其参数始终冻结。
         device = pred.device
         vgg_model = vgg_model.to(device)
         for param in vgg_model.parameters():
@@ -60,9 +60,9 @@ def net_loss(pred, target):
     pred_norm = (pred - mean) / std
     target_norm = (target - mean) / std
 
-    # GT 特征不需要梯度；预测特征不能放在 no_grad 中。
-    pred_features = net_loss.vgg_model(pred_norm)
+    # 原仓库将预测与 GT 的 VGG 前向都放在 no_grad 中，因此该项不改变模型梯度。
     with torch.no_grad():
+        pred_features = net_loss.vgg_model(pred_norm)
         target_features = net_loss.vgg_model(target_norm)
 
     return F.mse_loss(pred_features, target_features)

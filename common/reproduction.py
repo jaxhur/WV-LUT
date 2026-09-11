@@ -15,6 +15,8 @@ import torch
 
 
 BEIJING_TZ = timezone(timedelta(hours=8))
+# 版本 2 恢复原仓库 VGG 无梯度语义；旧 state 不能安全续训。
+TRAINING_SEMANTICS_VERSION = 2
 
 
 class BeijingFormatter(logging.Formatter):
@@ -214,6 +216,7 @@ def save_checkpoint(
         torch.save(model_state, directories["models"] / "best_G.pth")
 
     state = {
+        "training_semantics_version": TRAINING_SEMANTICS_VERSION,
         "epoch": epoch,
         "iteration": iteration,
         "elapsed_seconds": elapsed_seconds,
@@ -248,6 +251,12 @@ def resume_training(
     state_path = find_latest_state(directories["states"])
     if state_path is not None:
         state = torch.load(state_path, map_location=device, weights_only=False)
+        state_version = state.get("training_semantics_version")
+        if state_version != TRAINING_SEMANTICS_VERSION:
+            raise RuntimeError(
+                f"{state_path} 来自修复前的训练语义（version={state_version}），"
+                "继续恢复可能保持全黑塌缩。请保留旧实验目录，并使用新实验目录从头训练。"
+            )
         checkpoint_path = Path(state.get("model_path", directories["models"] / "latest_G.pth"))
         if not checkpoint_path.exists():
             checkpoint_path = directories["models"] / "latest_G.pth"
